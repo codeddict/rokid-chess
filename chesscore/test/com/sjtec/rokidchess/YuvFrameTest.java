@@ -1,4 +1,4 @@
-package com.sjtec.rokidchess.glasses;
+package com.sjtec.rokidchess;
 import java.nio.ByteBuffer;
 import org.junit.Test;
 import static org.junit.Assert.*;

@@ -1,0 +1,26 @@
+Rokid Chess 0.6.0
+
+Stockfish 19, unmodified SF19 source, rebuilt for Android ARM64/API31, GPL-3.0.
+Corresponding source, build scripts and official binary:
+https://github.com/official-stockfish/Stockfish/releases/tag/sf_19
+https://github.com/official-stockfish/Stockfish/tree/sf_19
+https://github.com/official-stockfish/Stockfish/archive/refs/tags/sf_19.zip
+Bundled binary SHA-256:
+adf06994b530e50626eb46b724b17ba2a9708c6e85bf426c978a1ab7d8c8e2b3
+Build recipe: scripts/build-chess-engine.py, Android NDK r28c/28.2.13676358.
+ARMv8 NEON, PIE, static libc++, 16KB ELF load alignment, embedded NNUE.
+Exact source/build recipe is also in the accompanying rokid-chess-source-v0.6.0.zip.
+https://github.com/codeddict/rokid-chess/releases/download/v0.6.0/rokid-chess-source-v0.6.0.zip
+Executable is named libstockfish.so for Android native-library extraction.
+It runs as a separate UCI process; no changes to Stockfish source code.
+NNUE: https://media.githubusercontent.com/media/official-stockfish/networks/master/nn-1a298aa575a0.nnue
+NNUE SHA-256: 1a298aa575a085434d29027978dc36867fe9c5bcea9376654b7a8eba1e52dfc2
+Full GPL text is in Stockfish-GPL-3.txt.
+
+chesslib 1.3.6, Ben-Hur Carlos Vieira Langoni Junior, Apache-2.0.
+https://github.com/bhlangonijr/chesslib/tree/1.3.6
+https://jitpack.io/com/github/bhlangonijr/chesslib/1.3.6/chesslib-1.3.6.jar
+
+OpenCV 4.12.0, Apache-2.0. https://opencv.org/license/
+Apache Commons Lang 3.18.0, Apache-2.0. https://commons.apache.org/proper/commons-lang/
+Rokid CXR SDK: https://developerdoc.rokid.com/sdk?lang=en

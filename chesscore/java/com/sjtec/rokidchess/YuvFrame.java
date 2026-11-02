@@ -1,4 +1,4 @@
-package com.sjtec.rokidchess.glasses;
+package com.sjtec.rokidchess;
 import java.nio.ByteBuffer;
 
 /** Handles planar and interleaved camera chroma, padded rows and nonzero buffer positions. */

@@ -51,7 +51,7 @@ def main():
 
     with concurrent.futures.ThreadPoolExecutor(max_workers=4) as pool:
         compiled = list(pool.map(compile_one, sources))
-    destination = ROOT / 'chessphone/src/main/jniLibs/arm64-v8a/libstockfish.so'
+    destination = ROOT / 'chessglasses/src/main/jniLibs/arm64-v8a/libstockfish.so'
     destination.parent.mkdir(parents=True, exist_ok=True)
     subprocess.run([str(compiler), '--target=aarch64-linux-android31', '--sysroot=' + str(toolchain / 'sysroot'),
                     '-pie', '-static-libstdc++', '-pthread', '-Wl,-z,max-page-size=16384', '-Wl,-z,common-page-size=16384',

@@ -18,17 +18,17 @@ try {
         }
     }
     if($Build -or $Install -or $Tests){
-        $chessTasks=@(':chessphone:assembleDebug',':chessphone:lintDebug',':chessglasses:lintDebug')
+        $chessTasks=@(':chessphone:clean',':chessphone:assembleDebug',':chessphone:lintDebug',':chessglasses:lintDebug')
         if($Tests){$chessTasks+=@(':chessphone:testDebugUnitTest',':chessglasses:testDebugUnitTest')}
         & ./gradlew.bat --no-daemon --console=plain @chessTasks
         if($LASTEXITCODE -ne 0){throw 'Chess build/check failed'}
-        Copy-Item -LiteralPath chessphone/build/outputs/apk/debug/chessphone-debug.apk -Destination artifacts/rokid-chess-v0.5.2.apk
+        Copy-Item -LiteralPath chessphone/build/outputs/apk/debug/chessphone-debug.apk -Destination artifacts/rokid-chess-v0.6.0.apk
     }
     if($Install){
-        & ./.tools/platform-tools/adb.exe install -r artifacts/rokid-chess-v0.5.2.apk
+        & ./.tools/platform-tools/adb.exe install -r artifacts/rokid-chess-v0.6.0.apk
         if($LASTEXITCODE -ne 0){throw 'Android phone installation failed'}
         & ./.tools/platform-tools/adb.exe shell am start -n com.sjtec.rokidchess/.MainActivity
         if($LASTEXITCODE -ne 0){throw 'Android phone launch failed'}
     }
-    Write-Host 'Phone APK includes the glasses app. Install it from the phone UI; then disconnect USB. No PC process is required.'
+    Write-Host 'Phone APK installs the standalone glasses app. After installation, launch it from the glasses app list. No phone or PC is required during play.'
 } finally {Pop-Location}
