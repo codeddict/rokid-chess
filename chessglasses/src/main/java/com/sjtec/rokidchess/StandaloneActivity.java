@@ -16,17 +16,18 @@ public class StandaloneActivity extends Activity {
     private enum Screen {GUIDE,MENU,CORNERS,VERSION,RESET}
     private final Handler main=new Handler(Looper.getMainLooper());private StandaloneCoach coach;private LocalCamera camera;private Hud view;
     private StandaloneCoach.State state;private Screen screen=Screen.GUIDE;private CornerPicker picker;private Bitmap photo;private byte[] photoBytes;
-    private boolean active,calibrationCapture,permissionPending,resetBlack,wantCalibration;private int selection;private String notice="";
+    private boolean active,calibrationCapture,permissionPending,resetBlack,wantCalibration;private int selection;private String notice="",cameraState="카메라 촬영 전",calibrationSource="";
     private GestureDetector gestures;private long lastInput,lastConfirmed;private String lastAction="";
     private final Runnable singleTap=this::tap;
     private final Runnable poll=()->{if(active&&screen==Screen.GUIDE&&state!=null&&state.live&&!state.busy&&!camera.pending())capture(false);};
     private final BroadcastReceiver keys=new BroadcastReceiver(){public void onReceive(Context c,Intent intent){String a=intent.getAction();if(a==null||!active)return;
         if(a.endsWith("DOUBLE_TAP"))back();else if(a.endsWith("SWIPE_FORWARD"))swipe(1);else if(a.endsWith("SWIPE_BACK"))swipe(-1);else delayedTap();}};
     public void onCreate(Bundle saved){super.onCreate(saved);getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);view=new Hud();setContentView(view);
-        camera=new LocalCamera(this,new LocalCamera.Listener(){public void photo(byte[] jpeg){if(!active)return;notice="";if(wantCalibration){wantCalibration=false;capture(true);return;}
-            if(calibrationCapture){photoBytes=jpeg;photo=BitmapFactory.decodeByteArray(jpeg,0,jpeg.length);if(photo==null){notice="안경 사진을 읽지 못했습니다.";render();return;}picker=new CornerPicker(state!=null&&state.player.equals("black"));screen=Screen.CORNERS;render();}
-            else coach.observe(jpeg);
-        }public void error(String message){notice=message;coach.pause();render();}});
+        camera=new LocalCamera(this,new LocalCamera.Listener(){public void photo(byte[] jpeg,String source){if(!active)return;notice="";if(wantCalibration){wantCalibration=false;capture(true);return;}
+            if(calibrationCapture){calibrationSource=source;photoBytes=jpeg;photo=BitmapFactory.decodeByteArray(jpeg,0,jpeg.length);if(photo==null){notice="안경 사진을 읽지 못했습니다.";render();return;}picker=new CornerPicker(state!=null&&state.player.equals("black"));screen=Screen.CORNERS;render();}
+            else if(!calibrationSource.equals(source)){coach.pause();notice="카메라 촬영 경로가 바뀌었습니다.\n메뉴에서 판을 다시 맞춰 주세요.";render();}else coach.observe(jpeg);
+        }public void error(String message){notice=message;coach.pause();render();}
+            public void status(String message){cameraState=message;if(calibrationCapture&&camera.pending()){String[] lines=message.split("\n");notice="안경에서 사진 받는 중…\n"+(lines.length>1?lines[1]:message);}render();}});
         coach=new StandaloneCoach(this,next->{state=next;if(screen==Screen.CORNERS&&!next.busy&&next.status.startsWith("판 맞추기 실패"))notice=next.status;if(!next.busy&&GuidePolicy.confirmed(next.live,next.calibrated,next.status))lastConfirmed=SystemClock.elapsedRealtime();render();main.removeCallbacks(poll);if(active&&screen==Screen.GUIDE&&next.live&&!next.busy)main.postDelayed(poll,600);});
         gestures=new GestureDetector(this,new GestureDetector.SimpleOnGestureListener(){public boolean onDown(MotionEvent e){return true;}public boolean onSingleTapConfirmed(MotionEvent e){tap();return true;}public boolean onDoubleTap(MotionEvent e){back();return true;}public boolean onFling(MotionEvent a,MotionEvent b,float x,float y){if(a==null)return false;float dx=b.getX()-a.getX();if(Math.abs(dx)>40){swipe(dx>0?1:-1);return true;}return false;}});
         IntentFilter filter=new IntentFilter("com.android.action.ACTION_SPRITE_BUTTON_CLICK");for(String a:new String[]{"SINGLE_TAP","DOUBLE_TAP","SWIPE_FORWARD","SWIPE_BACK"})filter.addAction("com.android.action.ACTION_TWO_FINGER_"+a);ContextCompat.registerReceiver(this,keys,filter,ContextCompat.RECEIVER_EXPORTED);
@@ -74,9 +75,9 @@ public class StandaloneActivity extends Activity {
                 y=top+photo.getHeight()*scale+20*density;y=text(c,picker.title()+"\n"+picker.help(),pad,y,14,Color.GREEN);
             }else if(screen==Screen.MENU){String[] items={"판 촬영·맞추기","새 대국 · 내가 백","새 대국 · 내가 흑","아슬아슬하게 이기기","중간 수준으로 이기기","압도적으로 이기기",state!=null&&state.live?"안내 일시 정지":"안내 시작","한 수 되돌리기","버전·상태","앱 종료"};y=text(c,"안경에서 선택\n▶ "+items[selection]+"\n"+(selection+1)+" / "+items.length+"\n스와이프: 이동 · 탭: 선택\n두 번 탭: 안내로",pad,y+20*density,19,Color.GREEN);
             }else if(screen==Screen.RESET){y=text(c,(resetBlack?"내가 흑":"내가 백")+" · 새 대국\n현재 기보를 초기화합니다.\n▶ "+(selection==0?"초기화하고 촬영":"취소")+"\n스와이프: 선택 · 탭: 확정",pad,y+20*density,18,Color.GREEN);
-            }else if(screen==Screen.VERSION){y=text(c,"안경 v"+BuildConfig.VERSION_NAME+"\n촬영·판 추적·Stockfish 19: 안경 내부\n휴대폰/인터넷 연결 필요 없음\n"+(state==null?"":state.status+"\n기보 "+state.plies+"수")+"\n탭: 안내로",pad,y+18*density,16,Color.GREEN);
+            }else if(screen==Screen.VERSION){y=text(c,"안경 v"+BuildConfig.VERSION_NAME+"\n촬영·판 추적·Stockfish 19: 안경 내부\n휴대폰/인터넷 연결 필요 없음\n"+(state==null?"":state.status+"\n기보 "+state.plies+"수")+"\n"+cameraState+"\n탭: 안내로",pad,y+18*density,14,Color.GREEN);
             }else {String body=state==null?"안경 엔진 준비 중…":state.busy?"안경에서 판/엔진 처리 중…":state.live&&GuidePolicy.confirmed(true,state.calibrated,state.status)?(SystemClock.elapsedRealtime()-lastConfirmed<4500?state.advice:"판 관측 대기 · 추천 갱신 중"):state.status;y=text(c,body+"\n\n한 번 탭: 메뉴",pad,y+28*density,18,Color.GREEN);}
-            if(!notice.isEmpty())text(c,notice,pad,Math.min(getHeight()-22*density,y+18*density),13,Color.YELLOW);
+            if(!notice.isEmpty()){float line=19*density;int count=0;paint.setTextSize(13*density);for(String paragraph:notice.split("\n",-1)){String remaining=paragraph;if(remaining.isEmpty())count++;while(!remaining.isEmpty()){int n=Math.max(1,paint.breakText(remaining,true,Math.max(10,getWidth()-2*pad),null));remaining=remaining.substring(n);count++;}}float top=Math.max(30*density,getHeight()-(count+1)*line);paint.setColor(Color.BLACK);c.drawRect(0,top-line,getWidth(),getHeight(),paint);text(c,notice,pad,top,13,Color.YELLOW);}
         }
     }
 }

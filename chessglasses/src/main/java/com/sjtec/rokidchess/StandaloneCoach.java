@@ -52,7 +52,7 @@ final class StandaloneCoach implements AutoCloseable {
         }}catch(Exception e){live=false;tracker.reset();message="관측 중지 · 판을 다시 맞추세요: "+detail(e);}finally{if(raw!=null)raw.release();busy=false;publish();}
     });}
     private void messageOnMain(String text){worker.execute(()->{message=text;publish();});}
-    private static Mat decode(byte[] bytes){android.graphics.BitmapFactory.Options bounds=new android.graphics.BitmapFactory.Options();bounds.inJustDecodeBounds=true;android.graphics.BitmapFactory.decodeByteArray(bytes,0,bytes.length,bounds);if(bounds.outWidth<=0||bounds.outHeight<=0||(long)bounds.outWidth*bounds.outHeight>2_000_000)throw new IllegalArgumentException("사진 해상도를 확인하세요.");return CameraImage.decode(bytes);}
+    private static Mat decode(byte[] bytes){android.graphics.BitmapFactory.Options bounds=new android.graphics.BitmapFactory.Options();bounds.inJustDecodeBounds=true;android.graphics.BitmapFactory.decodeByteArray(bytes,0,bytes.length,bounds);if(bounds.outWidth<=0||bounds.outHeight<=0||(long)bounds.outWidth*bounds.outHeight>CameraImage.MAX_PIXELS)throw new IllegalArgumentException("사진 해상도를 확인하세요.");return CameraImage.decode(bytes);}
 
     private static String detail(Exception e){String s=e.getMessage();return s==null?e.getClass().getSimpleName():s.substring(0,Math.min(130,s.length()));}
     public void close(){closed=true;live=false;generation++;worker.execute(()->{if(tracker!=null)tracker.close();if(engine!=null)engine.close();});worker.shutdown();main.removeCallbacksAndMessages(null);}

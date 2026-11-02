@@ -1,4 +1,4 @@
-Rokid Chess 0.6.1
+Rokid Chess 0.6.2
 
 Stockfish 19, unmodified SF19 source, rebuilt for Android ARM64/API31, GPL-3.0.
 Corresponding source, build scripts and official binary:
@@ -9,8 +9,8 @@ Bundled binary SHA-256:
 adf06994b530e50626eb46b724b17ba2a9708c6e85bf426c978a1ab7d8c8e2b3
 Build recipe: scripts/build-chess-engine.py, Android NDK r28c/28.2.13676358.
 ARMv8 NEON, PIE, static libc++, 16KB ELF load alignment, embedded NNUE.
-Exact source/build recipe is also in the accompanying rokid-chess-source-v0.6.1.zip.
-https://github.com/codeddict/rokid-chess/releases/download/v0.6.1/rokid-chess-source-v0.6.1.zip
+Exact source/build recipe is also in the accompanying rokid-chess-source-v0.6.2.zip.
+https://github.com/codeddict/rokid-chess/releases/download/v0.6.2/rokid-chess-source-v0.6.2.zip
 Executable is named libstockfish.so for Android native-library extraction.
 It runs as a separate UCI process; no changes to Stockfish source code.
 NNUE: https://media.githubusercontent.com/media/official-stockfish/networks/master/nn-1a298aa575a0.nnue

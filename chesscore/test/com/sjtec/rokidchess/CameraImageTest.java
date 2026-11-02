@@ -6,6 +6,7 @@ import org.opencv.imgcodecs.Imgcodecs;
 import java.io.*;
 
 public class CameraImageTest {
+    @Test public void fullHdCameraPreviewIsNotRejectedAsOverTwoMillionPixels(){Mat image=new Mat(1080,1920,CvType.CV_8UC3,new Scalar(100));MatOfByte encoded=new MatOfByte();Mat decoded=null;try{Imgcodecs.imencode(".jpg",image,encoded);decoded=CameraImage.decode(encoded.toArray());assertEquals(1920,decoded.cols());assertEquals(1080,decoded.rows());}finally{image.release();encoded.release();if(decoded!=null)decoded.release();}}
     @BeforeClass public static void nativeRuntime(){File f=new File(System.getProperty("chess.opencv.native",""));Assume.assumeTrue(f.isFile());System.load(f.getAbsolutePath());}
     @Test public void exifDoesNotRotateTheCalibrationCoordinates()throws Exception{
         Mat image=new Mat(64,96,CvType.CV_8UC3,new Scalar(50,100,150));MatOfByte jpeg=new MatOfByte();Imgcodecs.imencode(".jpg",image,jpeg);byte[] raw=jpeg.toArray();image.release();jpeg.release();

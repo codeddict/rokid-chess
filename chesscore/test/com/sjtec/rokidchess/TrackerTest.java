@@ -10,7 +10,7 @@ import java.util.*;
 /** Executes the production Java tracking code with a desktop OpenCV native test runtime. */
 public class TrackerTest {
     @BeforeClass public static void nativeRuntime(){File nativeFile=new File(System.getProperty("chess.opencv.native",""));Assume.assumeTrue(nativeFile.isFile());System.load(nativeFile.getAbsolutePath());}
-    private Mat picture(Game game){
+    static Mat picture(Game game){
         Mat image=new Mat(720,960,CvType.CV_8UC3,new Scalar(175,180,170));
         char[] pieces=Game.pieces(game.board);Random random=new Random(42);
         for(int i=0;i<64;i++){
@@ -27,7 +27,7 @@ public class TrackerTest {
         }
         return image;
     }
-    private Point[] corners(){return new Point[]{new Point(150,60),new Point(750,60),new Point(750,660),new Point(150,660)};}
+    static Point[] corners(){return new Point[]{new Point(150,60),new Point(750,60),new Point(750,660),new Point(150,660)};}
     @Test public void actualImageMoveConsensusAndReferenceUpdate(){
         Game game=new Game();Mat before=picture(game);
         try(LiveTracker tracker=new LiveTracker()){
