@@ -1,0 +1,21 @@
+plugins { id 'com.android.application' }
+android {
+    namespace 'com.sjtec.rokidchess.glasses'
+    compileSdk 36
+    defaultConfig {
+        applicationId 'com.sjtec.rokidchess.glasses'
+        minSdk 31
+        targetSdk 36
+        versionCode 6
+        versionName '0.5.1'
+    }
+    compileOptions { sourceCompatibility JavaVersion.VERSION_17; targetCompatibility JavaVersion.VERSION_17 }
+    buildFeatures { buildConfig true }
+    sourceSets { main { java.srcDirs += '../chessshared/java' } }
+}
+dependencies {
+    implementation 'com.rokid.cxr:cxr-service-bridge:1.0-20260715.121510-107'
+    implementation 'androidx.core:core:1.16.0'
+    testImplementation 'junit:junit:4.13.2'
+    testImplementation 'org.json:json:20240303'
+}

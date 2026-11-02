@@ -1,0 +1,4 @@
+// Android 플러그인 버전을 한 곳에서 고정한다. SDK/Gradle 변경 시 세 앱 모듈의 빌드와 lint를 함께 확인한다.
+plugins {
+    id 'com.android.application' version '8.11.1' apply false
+}

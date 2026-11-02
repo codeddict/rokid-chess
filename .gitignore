@@ -1,0 +1,14 @@
+**/build/
+.gradle/
+local.properties
+.private/
+*.jks
+*.keystore
+*.apk
+*.zip
+*.log
+.tools/android-sdk/
+.tools/jdk/
+.tools/gh/
+.tools/stockfish-android/stockfish/src/*.nnue
+__pycache__/

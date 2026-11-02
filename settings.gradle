@@ -1,0 +1,13 @@
+// 외부 의존 저장소와 세 모듈을 선언한다. app은 초기 시험용, hqphone/hqglasses는 운영 HQ 앱이다.
+pluginManagement { repositories { google(); mavenCentral(); gradlePluginPortal() } }
+dependencyResolutionManagement {
+    repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
+    repositories {
+        google()
+        mavenCentral()
+        maven { url 'https://maven.rokid.com/repository/maven-public/' }
+    }
+}
+rootProject.name = 'RokidWorkTest'
+include ':chessphone'
+include ':chessglasses'
