@@ -22,10 +22,10 @@ try {
         if($Tests){$chessTasks+=@(':chessphone:testDebugUnitTest',':chessglasses:testDebugUnitTest')}
         & ./gradlew.bat --no-daemon --console=plain @chessTasks
         if($LASTEXITCODE -ne 0){throw 'Chess build/check failed'}
-        Copy-Item -LiteralPath chessphone/build/outputs/apk/debug/chessphone-debug.apk -Destination artifacts/rokid-chess-v0.6.0.apk
+        Copy-Item -LiteralPath chessphone/build/outputs/apk/debug/chessphone-debug.apk -Destination artifacts/rokid-chess-v0.6.1.apk
     }
     if($Install){
-        & ./.tools/platform-tools/adb.exe install -r artifacts/rokid-chess-v0.6.0.apk
+        & ./.tools/platform-tools/adb.exe install -r artifacts/rokid-chess-v0.6.1.apk
         if($LASTEXITCODE -ne 0){throw 'Android phone installation failed'}
         & ./.tools/platform-tools/adb.exe shell am start -n com.sjtec.rokidchess/.MainActivity
         if($LASTEXITCODE -ne 0){throw 'Android phone launch failed'}
