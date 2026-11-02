@@ -13,7 +13,8 @@ def main():
     if not re.fullmatch(r'[0-9]+\.[0-9]+\.[0-9]+',version):raise ValueError('Invalid release version')
     paths=[ROOT/n for n in ['build.gradle','gradle.properties','gradlew','gradlew.bat','chessphone/build.gradle','chessglasses/build.gradle',
         'scripts/chess.ps1','scripts/build-chess-engine.py','scripts/prepare-chess-tests.py','scripts/package-chess-source.py',
-        'docs/ROKID_CHESS_LIVE.md','docs/ROKID_CHESS_GLASS_CONTROLS.md','docs/ROKID_CHESS_UPDATER.md']]
+        'docs/ROKID_CHESS_LIVE.md','docs/ROKID_CHESS_GLASS_CONTROLS.md','docs/ROKID_CHESS_UPDATER.md',
+        'docs/ROKID_CHESS_CAMERA.md','docs/ROKID_CHESS_RELEASE_v0.5.2.md']]
     for directory in ['gradle/wrapper','chessphone/src','chessphone/libs','chessglasses/src','chessshared/java','.tools/stockfish-android/stockfish/src']:
         paths.extend(p for p in (ROOT/directory).rglob('*') if p.is_file() and 'jniLibs' not in p.parts and '__pycache__' not in p.parts and p.suffix not in ('.o','.exe'))
     for name in ['AUTHORS','Copying.txt','README.md']:paths.append(ROOT/'.tools/stockfish-android/stockfish'/name)

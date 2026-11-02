@@ -11,17 +11,22 @@ import java.util.*;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import com.sjtec.rokidchess.shared.ControlRequest;
+import com.rokid.sprite.aiapp.externalapp.auth.AuthorizationHelper;
+import com.rokid.sprite.aiapp.externalapp.auth.GlassPermission;
 import org.json.JSONObject;
 
-/** CUSTOMAPP session carries camera frames and expiring HUD directly over CXR. */
+/** System-camera photos arrive via the official CXR image callback; CUSTOMAPP carries HUD/control. */
 final class Glasses implements AutoCloseable {
     static final String PACKAGE="com.sjtec.rokidchess.glasses";
-    interface Listener {void status(String text);void connected(boolean ready);void frame(byte[] jpeg,long roundtrip);void frameFailed(String error);void control(ControlRequest request);void probe(JSONObject response);}
+    interface Listener {void status(String text);void connected(boolean ready);void frame(byte[] jpeg,long roundtrip);void frameFailed(String error);void control(ControlRequest request);void probe(JSONObject response);void cameraStatus(String text);}
     private final Context context;private final Listener listener;private final Handler main=new Handler(Looper.getMainLooper());
     private final ExecutorService files=Executors.newSingleThreadExecutor();
     private CXRLink link;private boolean service,bt,opened,dead,installing,wantInstall,starting;
-    private String pending="",hud="로키드 체스\n휴대폰에서 판을 맞추세요.";private int hudTtl;private long requested;
-    private final FrameBuffer frames=new FrameBuffer();
+    private String hud="로키드 체스\n휴대폰에서 판을 맞추세요.";private int hudTtl;private long requested;
+    private final PhotoRequest photo=new PhotoRequest();
+    private String cameraResult="로키드 카메라: 아직 촬영하지 않았습니다.";
+    String cameraResult(){return cameraResult;}
+    private void cameraStatus(String text){cameraResult=text;listener.cameraStatus(text);}
     Glasses(Context context,Listener listener){this.context=context;this.listener=listener;}
     void connect(String token,boolean install){
         release();wantInstall=install;CXRLink current=new CXRLink(context);link=current;
@@ -37,15 +42,33 @@ final class Glasses implements AutoCloseable {
             public void onGlassLauncherResume(){post(()->{opened=false;listener.connected(false);});}
         });
         link.setCXRCustomCmdCbk((key,payload)->{if(payload!=null&&payload.length<=310000)main.post(()->{if(!dead&&link==current)receive(key,payload);});});
+        current.setCXRImageCbk(new IImageStreamCbk(){
+            public void onImageReceived(byte[] jpeg){
+                if(jpeg==null||jpeg.length<100||jpeg.length>2_000_000){main.post(()->{if(!dead&&link==current&&photo.complete()){cameraStatus("로키드 카메라: 사진 데이터 크기 오류");listener.frameFailed("로키드 사진 수신 오류 · 다시 촬영하세요.");}});return;}
+                byte[] image=jpeg.clone();
+                main.post(()->{
+                    if(dead||link!=current||!photo.complete())return;
+                    long elapsed=SystemClock.elapsedRealtime()-requested;
+                    cameraStatus("로키드 카메라: 사진 수신 완료 · "+image.length+" bytes / "+elapsed+"ms");
+                    listener.frame(image,elapsed);
+                });
+            }
+            public void onImageError(int code,String message){main.post(()->{
+                if(dead||link!=current||!photo.complete())return;
+                String detail=message==null?"":message.substring(0,Math.min(140,message.length()));
+                String error="로키드 촬영 오류 "+code+" · "+detail;
+                cameraStatus(error);listener.frameFailed(error+" · Hi Rokid 카메라 권한/연결을 확인하세요.");
+            });}
+        });
         if(!link.configCXRSession(new CxrDefs.CXRSession(CxrDefs.CXRSessionType.CUSTOMAPP,PACKAGE))||!link.connect(token))listener.status("안경 연결 요청 실패");
     }
-    private void lost(){opened=false;pending="";starting=installing=false;listener.connected(false);listener.status("안경 연결 끊김 · 다시 연결하세요.");}
+    private void lost(){opened=false;if(photo.pending())photo.invalidate();starting=installing=false;listener.connected(false);listener.status("안경 연결 끊김 · 다시 연결하세요.");}
     private void drain(){if(dead||link==null||!service||!bt||installing||starting||opened)return;if(wantInstall)install();else open();}
     private IGlassAppCbk callback(CXRLink current){return new IGlassAppCbk(){
         private void post(Runnable r){main.post(()->{if(!dead&&link==current)r.run();});}
         public void onInstallAppResult(boolean ok){post(()->{installing=false;wantInstall=false;if(ok)open();else listener.status("안경 설치 실패 · 다시 설치하세요.");});}
         public void onUnInstallAppResult(boolean ok){}
-        public void onOpenAppResult(boolean ok){post(()->{starting=false;opened=ok;listener.connected(ok);listener.status(ok?"안경 앱 연결됨 · 카메라 권한을 허용하세요.":"안경 앱을 먼저 설치하세요.");if(ok)show(hud,hudTtl);});}
+        public void onOpenAppResult(boolean ok){post(()->{starting=false;opened=ok;listener.connected(ok);listener.status(ok?"안경 앱 연결됨 · 로키드 카메라 촬영 준비":"안경 앱을 먼저 설치하세요.");if(ok){stream(false);show(hud,hudTtl);}});}
         public void onStopAppResult(boolean ok){}
         public void onGlassAppResume(boolean resumed){post(()->{opened=resumed;listener.connected(resumed);});}
         public void onQueryAppResult(boolean installed){}
@@ -70,8 +93,10 @@ final class Glasses implements AutoCloseable {
     }
     boolean ready(){return !dead&&service&&bt&&opened;}
     void stream(boolean enabled){
+        // Camera ownership stays with Rokid's system photo service, including during live play.
+        // Release Camera2 in an older glasses app before using that service.
         if(!ready())return;
-        try{Caps caps=new Caps();caps.writeInt32(enabled?1:0);link.sendCustomCmd("chess_stream",caps);}catch(Exception e){listener.status("영상 스트림 제어 오류");}
+        try{Caps caps=new Caps();caps.writeInt32(0);link.sendCustomCmd("chess_stream",caps);}catch(Exception e){listener.status("로키드 카메라 준비 신호 전송 오류");}
     }
     void show(String text,int ttl){
         hud=text;hudTtl=ttl;if(!ready())return;
@@ -87,11 +112,27 @@ final class Glasses implements AutoCloseable {
         catch(Exception e){return false;}
     }
     boolean requestFrame(){
-        if(!ready()||!pending.isEmpty())return false;
-        pending=UUID.randomUUID().toString();frames.begin(pending);String id=pending;requested=SystemClock.elapsedRealtime();
-        try{Caps caps=new Caps();caps.write(id);link.sendCustomCmd("chess_frame_request",caps);}
-        catch(Exception e){pending="";listener.frameFailed("프레임 요청 실패");return false;}
-        main.postDelayed(()->{if(!dead&&pending.equals(id)){pending="";frames.clear();listener.frameFailed("프레임 수신 시간 초과");}},4000);return true;
+        if(!ready())return false;
+        if(photo.broken()){listener.frameFailed("로키드 촬영 응답이 끊겼습니다. 안경 연결을 다시 누르세요.");return false;}
+        if(photo.pending())return false;
+        if(!AuthorizationHelper.INSTANCE.hasGlassPermission(GlassPermission.CAMERA)){
+            cameraStatus("로키드 카메라: Hi Rokid 카메라 권한 없음");
+            listener.frameFailed("안경 연결을 다시 눌러 Hi Rokid의 카메라 권한을 허용하세요.");return false;
+        }
+        CXRLink current=link;long id=photo.begin();if(id==0)return false;
+        requested=SystemClock.elapsedRealtime();cameraStatus("로키드 카메라: 촬영 요청 중…");
+        try{
+            if(!current.takePhoto(1024,768,70)){
+                photo.complete();cameraStatus("로키드 카메라: 촬영 요청 거부");
+                listener.frameFailed("로키드 촬영 요청 실패 · Hi Rokid 연결/카메라 권한과 다른 촬영 앱을 확인하세요.");return false;
+            }
+        }catch(Exception e){photo.complete();cameraStatus("로키드 카메라: SDK 촬영 요청 오류");listener.frameFailed("로키드 촬영 요청 오류 · 안경을 다시 연결하세요.");return false;}
+        main.postDelayed(()->{
+            if(!dead&&link==current&&photo.expire(id)){
+                cameraStatus("로키드 카메라: 15초 동안 사진 응답 없음");
+                listener.frameFailed("로키드 사진 수신 시간 초과 · 안경 연결을 다시 누르세요.");
+            }
+        },PhotoRequest.TIMEOUT_MS);return true;
     }
     private void receive(String key,byte[] payload){
         try{
@@ -104,26 +145,9 @@ final class Glasses implements AutoCloseable {
                 if(caps.size()==1&&caps.at(0).type()==Caps.Value.TYPE_STRING){try{listener.control(ControlRequest.parse(caps.at(0).getString()));}catch(Exception ignored){}}
                 return;
             }
-            if(key.equals("chess_camera_status")&&caps.size()==1){listener.status(caps.at(0).getString());return;}
-            if(key.equals("chess_frame_chunk")){
-                if(caps.size()!=5||caps.at(0).type()!=Caps.Value.TYPE_STRING||!pending.equals(caps.at(0).getString())||pending.isEmpty())return;
-                for(int i=1;i<=3;i++)if(caps.at(i).type()!=Caps.Value.TYPE_INT32)return;
-                if(caps.at(4).type()!=Caps.Value.TYPE_BINARY)return;
-                Caps.Binary b=caps.at(4).getBinary();
-                if(b.length>FrameBuffer.CHUNK||b.offset<0||b.offset+b.length>b.data.length)throw new IllegalArgumentException("조각 크기 오류");
-                byte[] complete=frames.accept(pending,caps.at(1).getInt(),caps.at(2).getInt(),caps.at(3).getInt(),Arrays.copyOfRange(b.data,b.offset,b.offset+b.length));
-                if(complete!=null){pending="";listener.frame(complete,SystemClock.elapsedRealtime()-requested);}return;
-            }
-            if(caps.size()!=2||caps.at(0).type()!=Caps.Value.TYPE_STRING||!pending.equals(caps.at(0).getString())||pending.isEmpty())return;
-            long elapsed=SystemClock.elapsedRealtime()-requested;
-            if(key.equals("chess_frame")&&caps.at(1).type()==Caps.Value.TYPE_BINARY){
-                Caps.Binary b=caps.at(1).getBinary();pending="";
-                if(b.length<100||b.length>300000||b.offset<0||b.offset+b.length>b.data.length){listener.frameFailed("프레임 크기 오류");return;}
-                listener.frame(Arrays.copyOfRange(b.data,b.offset,b.offset+b.length),elapsed);
-            }else if(key.equals("chess_frame_error")&&caps.at(1).type()==Caps.Value.TYPE_STRING){pending="";listener.frameFailed(caps.at(1).getString());}
-        }catch(Exception e){pending="";listener.frameFailed("프레임 형식 오류");}
+        }catch(Exception e){android.util.Log.w("RokidChess","안경 제어 응답 형식 오류");}
     }
-    void cancelFrame(){pending="";frames.clear();}
-    private void release(){CXRLink old=link;link=null;if(old!=null)try{old.disconnect();}catch(Exception ignored){}service=bt=opened=starting=installing=false;pending="";}
+    void cancelFrame(){photo.cancel();}
+    private void release(){CXRLink old=link;link=null;if(old!=null)try{old.disconnect();}catch(Exception ignored){}service=bt=opened=starting=installing=false;photo.reset();}
     @Override public void close(){dead=true;release();main.removeCallbacksAndMessages(null);files.shutdownNow();}
 }

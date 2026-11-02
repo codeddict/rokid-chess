@@ -1,17 +1,19 @@
 # Rokid Chess · 실물 체스 도우미
 
+**v0.5.2 카메라 수정:** [로키드 촬영 사용법](docs/ROKID_CHESS_CAMERA.md). 휴대폰에서 업데이트 후 **안경 업데이트 → 안경 연결**을 누르고 Hi Rokid **카메라 권한**을 허용하세요. **로키드 카메라 촬영 · 위치 맞추기**로 안경 사진을 받습니다. Rokid 공식 CXR 사진 API로 촬영하며 안경 HUD 앱은 카메라를 직접 점유하지 않습니다. 실제 사진 수신과 연속 촬영 지연은 이번 개발 환경에서 실기 검증 전입니다.
+
 로키드 안경과 Android 휴대폰으로 실제 체스판을 관측하고 다음 이동을 안내하는 앱입니다. 휴대폰의 Stockfish 19가 분석하며 PC 없이 동작합니다. 초기 배치에서 판의 네 모서리를 지정한 뒤 사용합니다. 임의의 중간 판을 사진 한 장으로 자동 복원하지 않으며 실물 인식 정확도는 실기 검증 전입니다.
 
-## 설치 · v0.5.1
+## 설치 · v0.5.2
 
-[최신 APK 다운로드](https://github.com/codeddict/rokid-chess/releases/latest/download/rokid-chess-v0.5.1.apk) · [릴리스와 전체 대응 소스](https://github.com/codeddict/rokid-chess/releases/latest)
+[최신 APK 다운로드](https://github.com/codeddict/rokid-chess/releases/download/v0.5.2/rokid-chess-v0.5.2.apk) · [릴리스와 전체 대응 소스](https://github.com/codeddict/rokid-chess/releases/latest)
 
-1. 휴대폰에서 릴리스 Assets의 `rokid-chess-v0.5.1.apk`를 받아 기존 앱 위에 설치합니다. Android 12 이상 ARM64입니다. 기존 앱을 삭제할 필요는 없습니다.
+1. 휴대폰에서 릴리스 Assets의 `rokid-chess-v0.5.2.apk`를 받아 기존 앱 위에 설치합니다. Android 12 이상 ARM64입니다. 기존 앱을 삭제할 필요는 없습니다.
 2. Hi Rokid에서 안경을 연결하고 체스 앱의 **안경 업데이트**를 누릅니다.
 3. **안경 버전·난이도 점검**으로 버전과 모드를 확인합니다.
-4. 실제 말을 초기 배치로 놓고 **내 말 색 변경 → 실제 체스판 촬영 · 위치 맞추기 → 실물 판 안내 시작** 순서로 사용합니다.
+4. 실제 말을 초기 배치로 놓고 **내 말 색 변경 → 로키드 카메라 촬영 · 위치 맞추기 → 실물 판 안내 시작** 순서로 사용합니다.
 
-v0.5.0 이하는 업데이트 주소가 옛 웹하드로 고정되어 있어 이번 한 번 APK 직접 설치가 필요합니다. v0.5.1부터 **앱 업데이트 확인 / 설치**는 이 GitHub 저장소의 릴리스에서 안내와 APK를 받습니다. 앱 사용자는 GitHub 로그인 없이 다운로드할 수 있습니다. Android 설치 확인은 직접 눌러야 합니다.
+v0.5.0 이하는 업데이트 주소가 옛 웹하드로 고정되어 있어 이번 한 번 APK 직접 설치가 필요합니다. v0.5.2부터 **앱 업데이트 확인 / 설치**는 이 GitHub 저장소의 릴리스에서 안내와 APK를 받습니다. 앱 사용자는 GitHub 로그인 없이 다운로드할 수 있습니다. Android 설치 확인은 직접 눌러야 합니다.
 
 [업데이트·점검 안내](docs/ROKID_CHESS_UPDATER.md) · [안경 조작·백/흑 모서리 선택](docs/ROKID_CHESS_GLASS_CONTROLS.md) · [실물판 사용법](docs/ROKID_CHESS_LIVE.md)
 

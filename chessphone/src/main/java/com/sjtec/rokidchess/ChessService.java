@@ -47,6 +47,12 @@ public final class ChessService extends Service implements Glasses.Listener {
     private volatile byte[] calibrationImage;private String calibrationFen="";
     private long captureMs,visionMs,engineMs,frameStarted;
     private int frameFailures;
+    private long calibrationStarted,calibrationRound;
+    private final Runnable calibrationPoll=new Runnable(){public void run(){
+        if(dead||!calibrationRequested)return;
+        if(SystemClock.elapsedRealtime()-calibrationStarted>PhotoRequest.TIMEOUT_MS){frameFailed("이전 촬영 응답을 기다리는 중입니다. 안경 연결을 다시 누르세요.");return;}
+        if(!glasses.requestFrame()&&calibrationRequested)main.postDelayed(this,300);
+    }};
     private String adviceMode="",diagnosticId="",probeReport="안경 응답: 아직 점검하지 않았습니다.",engineReport="";
     private boolean diagnosticQueued,diagnosticRunning;
     private volatile Snapshot snapshot=new Snapshot(Game.START,"white","balanced","준비 중","","휴대폰 엔진 준비 중","",List.of(),0,true,false,false,false,0,0,0);
@@ -89,7 +95,7 @@ public final class ChessService extends Service implements Glasses.Listener {
     }
     @Override public IBinder onBind(Intent intent){return new LocalBinder();}
     Snapshot snapshot(){return snapshot;}
-    void attach(Listener l){if(dead){if(l!=null)l.stopped();return;}listener=l;if(l!=null){l.changed(snapshot);l.diagnostics(diagnostics());}}
+    void attach(Listener l){if(dead){if(l!=null)l.stopped();return;}listener=l;if(l!=null){l.changed(snapshot);l.diagnostics(diagnostics());byte[] photo=calibrationImage;if(photo!=null)l.calibration(photo);}}
     void detach(Listener l){if(listener==l)listener=null;}
     private Snapshot build(){return new Snapshot(game.board.getFen(),player,mode,advice,hint,message,promotion,game.legal(),game.moves.size(),false,live,
         tracker!=null&&tracker.calibrated(),connected,captureMs,visionMs,engineMs);}
@@ -183,7 +189,7 @@ public final class ChessService extends Service implements Glasses.Listener {
     String diagnostics(){
         Snapshot s=snapshot;
         return "휴대폰 v"+BuildConfig.VERSION_NAME+"\n"+probeReport+"\n현재 설정: "+CoachMode.stored(s.mode).label+
-            "\n최근 엔진 분석 모드: "+(adviceMode.isEmpty()?"아직 없음":CoachMode.stored(adviceMode).label)+"\n"+engineReport;
+            "\n최근 엔진 분석 모드: "+(adviceMode.isEmpty()?"아직 없음":CoachMode.stored(adviceMode).label)+"\n"+glasses.cameraResult()+"\n"+engineReport;
     }
     private void reportDiagnostics(){if(listener!=null)listener.diagnostics(diagnostics());}
     private void requestProbe(){
@@ -193,6 +199,7 @@ public final class ChessService extends Service implements Glasses.Listener {
     }
     void runDiagnostics(){
         if(dead||diagnosticRunning)return;
+        if(calibrationRequested){diagnosticQueued=true;engineReport="로키드 사진 수신 후 점검합니다.";reportDiagnostics();return;}
         if(busy){diagnosticQueued=true;engineReport="현재 처리 후 점검합니다.";reportDiagnostics();return;}
         if(coach==null){engineReport="엔진 초기화 상태를 확인하세요.";reportDiagnostics();return;}
         diagnosticQueued=false;diagnosticRunning=true;busy=true;generation++;main.removeCallbacks(poll);glasses.cancelFrame();
@@ -222,6 +229,7 @@ public final class ChessService extends Service implements Glasses.Listener {
     void setLive(boolean enabled){
         if(enabled&&(busy||!snapshot.calibrated||!connected)){status("안경 연결과 판 맞추기를 먼저 완료하세요.");return;}
         synchronized(commitLock){live=enabled;generation++;}
+        calibrationRequested=false;main.removeCallbacks(calibrationPoll);
         main.removeCallbacks(poll);glasses.cancelFrame();glasses.stream(enabled);updateWake();
         status(enabled?"라이브 시작 · 양쪽 수를 자동 추적합니다.":"라이브 일시 정지");
         if(enabled){show("라이브 시작\n체스판을 바라보세요.");schedule(0);}else show(advice);
@@ -233,10 +241,16 @@ public final class ChessService extends Service implements Glasses.Listener {
     }
     void requestCalibration(){
         if(busy||!connected){status("안경 연결/처리 상태를 확인하세요.");return;}
+        if(calibrationRequested){status("로키드 카메라 사진을 기다리는 중입니다.");return;}
         setLive(false);glasses.stream(true);calibrationRequested=true;calibrationImage=null;
-        if(!glasses.requestFrame()){calibrationRequested=false;status("안경 카메라 준비를 기다리세요.");}
+        calibrationStarted=SystemClock.elapsedRealtime();status("로키드 카메라로 촬영 중 · 안경으로 판 전체를 바라보세요.");
+        glasses.show("로키드 카메라 촬영 중\n실제 체스판 전체를 바라보세요.",0);
+        long round=++calibrationRound;
+        main.postDelayed(()->{if(!dead&&calibrationRequested&&round==calibrationRound){glasses.cancelFrame();frameFailed("로키드 촬영 대기 시간 초과 · 안경 연결을 다시 누르세요.");}},PhotoRequest.TIMEOUT_MS*2);
+        // Give an older glasses APK a chance to release its direct Camera2 session.
+        main.postDelayed(calibrationPoll,300);
     }
-    void discardCalibration(){calibrationImage=null;}
+    void discardCalibration(){calibrationImage=null;calibrationRequested=false;main.removeCallbacks(calibrationPoll);glasses.cancelFrame();}
     void calibrate(Point[] corners){
         byte[] jpeg=calibrationImage;if(jpeg==null){status("판 사진을 다시 받으세요.");return;}
         command(()->{
@@ -258,13 +272,13 @@ public final class ChessService extends Service implements Glasses.Listener {
         if(dead||busy)return;
         boolean calibration=calibrationRequested;calibrationRequested=false;
         if(!calibration&&!live)return;
-        if(elapsed>3000){frameFailed("오래된 프레임 폐기 · 안경 연결 속도를 확인하세요.");return;}
+        if(elapsed>(calibration?PhotoRequest.TIMEOUT_MS:6000)){frameFailed("오래된 사진 폐기 · 안경 연결 속도를 확인하세요.");return;}
         busy=true;int epoch=generation;captureMs=elapsed;frameFailures=0;
         worker.execute(()->{
             Mat raw=null;byte[] preview=null;float[] physicalCorners=null;
             try{
                 raw=decode(jpeg);
-                if(calibration){calibrationImage=jpeg;calibrationFen=game.board.getFen();preview=jpeg;message="사진에서 a8 → h8 → h1 → a1 모서리를 누르세요.";main.post(()->glasses.stream(false));}
+                if(calibration){calibrationFen=game.board.getFen();calibrationImage=jpeg;preview=jpeg;message="로키드 사진 수신 완료 · a8 → h8 → h1 → a1 모서리를 누르세요.";main.post(()->glasses.stream(false));}
                 else if(live&&epoch==generation){
                     long started=SystemClock.elapsedRealtime();
                     try(LiveTracker.Frame observation=tracker.observe(raw,game.board,started)){
@@ -300,7 +314,7 @@ public final class ChessService extends Service implements Glasses.Listener {
         });
     }
     @Override public void frameFailed(String error){
-        if(dead)return;calibrationRequested=false;if(!live)glasses.stream(false);frameFailures++;status(error);show("관측 대기\n"+error);
+        if(dead)return;calibrationRequested=false;main.removeCallbacks(calibrationPoll);if(!live)glasses.stream(false);frameFailures++;status(error);show("관측 대기\n"+error);
         if(frameFailures>=5){setLive(false);status("프레임 수신 실패 5회 · 안경 앱/카메라 권한을 확인하고 다시 시작하세요.");}
         else if(live)schedule(700);
     }
@@ -322,6 +336,7 @@ public final class ChessService extends Service implements Glasses.Listener {
         if(listener!=null)listener.changed(snapshot);
         sendState("",true,"");
     }
+    @Override public void cameraStatus(String text){reportDiagnostics();status(text);}
     private static String safe(Exception e){String text=e.getMessage();return text==null?e.getClass().getSimpleName():text.substring(0,Math.min(180,text.length()));}
     private void shutdown(){
         if(dead)return;

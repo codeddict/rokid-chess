@@ -1,19 +1,9 @@
 package com.sjtec.rokidchess.glasses;
 
-import android.Manifest;
 import android.app.Activity;
-import android.content.pm.PackageManager;
 import android.content.*;
 import android.graphics.Color;
-import android.graphics.ImageFormat;
-import android.graphics.Rect;
-import android.graphics.YuvImage;
-import android.hardware.camera2.*;
-import android.hardware.camera2.params.StreamConfigurationMap;
-import android.media.Image;
-import android.media.ImageReader;
 import android.os.*;
-import android.util.Size;
 import android.view.Gravity;
 import android.view.WindowManager;
 import android.view.*;
@@ -24,14 +14,11 @@ import com.sjtec.rokidchess.shared.CoachMode;
 import org.json.JSONObject;
 import com.rokid.cxr.CXRServiceBridge;
 import com.rokid.cxr.Caps;
-import java.nio.ByteBuffer;
-import java.io.ByteArrayOutputStream;
 import java.util.*;
 
-/** Continuous YUV preview; only the next requested frame is JPEG-encoded and transmitted. */
+/** HUD/control only. Rokid system photo service owns the glasses camera. */
 public final class MainActivity extends Activity {
     private final Handler main=new Handler(Looper.getMainLooper());
-    private HandlerThread cameraThread;private Handler cameraHandler;
     private CXRServiceBridge bridge;private TextView display,header;
     private final GlassMenu menu=new GlassMenu(BuildConfig.VERSION_NAME);
     private GestureDetector gestures;private long lastInputAt,lastQuery,noticeUntil;private String lastInput="",rendered="",renderedHeader="";
@@ -44,11 +31,9 @@ public final class MainActivity extends Activity {
         else if((PAD+"SWIPE_FORWARD").equals(action))navigate(1);
         else if((PAD+"SWIPE_BACK").equals(action))navigate(-1);
     }};
-    private CameraDevice camera;private CameraCaptureSession session;private ImageReader reader;
-    private volatile boolean active;private boolean opening,streaming;
-    private String pending="";private long lastImageTimestamp,minimumTimestamp,lastHud,expires,lastRequestElapsed;private int cameraEpoch;
+    private volatile boolean active;
+    private long lastHud,expires;
     private String hud="실물 체스 도우미\n아드님과 두는 실제 판을 바라보고\n휴대폰에서 판을 맞춰 주세요.";
-    private int autofocus=CaptureRequest.CONTROL_AF_MODE_OFF;
     @Override public void onCreate(Bundle saved) {
         super.onCreate(saved);getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         LinearLayout layout=new LinearLayout(this);layout.setOrientation(LinearLayout.VERTICAL);layout.setGravity(Gravity.CENTER);layout.setBackgroundColor(Color.BLACK);
@@ -62,18 +47,16 @@ public final class MainActivity extends Activity {
         });
         IntentFilter filter=new IntentFilter("com.android.action.ACTION_SPRITE_BUTTON_CLICK");for(String s:new String[]{"SINGLE_TAP","DOUBLE_TAP","SWIPE_FORWARD","SWIPE_BACK"})filter.addAction(PAD+s);
         ContextCompat.registerReceiver(this,keys,filter,ContextCompat.RECEIVER_EXPORTED);render();
-        cameraThread=new HandlerThread("chess-camera");cameraThread.start();cameraHandler=new Handler(cameraThread.getLooper());
         bridge=new CXRServiceBridge();
-        bridge.subscribe("chess_frame_request",(CXRServiceBridge.MsgCallback)(name,args,bytes)-> {
-            if(args!=null&&args.size()==1&&args.at(0).type()==Caps.Value.TYPE_STRING) {
-                String id=args.at(0).getString();if(id.matches("[0-9a-f-]{36}"))cameraHandler.post(()->capture(id));
-            }
+        bridge.setStatusListener(new CXRServiceBridge.StatusListener(){
+            public void onConnected(String mac,String name,int type){main.post(()->{if(active)queryState();});}
+            public void onDisconnected(){main.post(()->{menu.synced=false;render();});}
+            public void onConnecting(String mac,String name,int type){}
+            public void onARTCStatus(float quality,boolean healthy){}
+            public void onRokidAccountChanged(String account){}
+            public void onAudioNoise(float noise){}
         });
-        bridge.subscribe("chess_stream",(CXRServiceBridge.MsgCallback)(name,args,bytes)->{
-            if(args==null||args.size()!=1||args.at(0).type()!=Caps.Value.TYPE_INT32)return;
-            boolean enabled=args.at(0).getInt()!=0;
-            cameraHandler.post(()->{streaming=enabled;if(enabled){lastRequestElapsed=SystemClock.elapsedRealtime();openCamera();}else closeCamera();});
-        });
+        bridge.subscribe("chess_stream",(CXRServiceBridge.MsgCallback)(name,args,bytes)->{});
         bridge.subscribe("chess_hud",(CXRServiceBridge.MsgCallback)(name,args,bytes)-> {
             if(args==null||args.size()!=2||args.at(0).type()!=Caps.Value.TYPE_STRING||args.at(1).type()!=Caps.Value.TYPE_INT32)return;
             String text=args.at(0).getString();int ttl=args.at(1).getInt();if(text.length()>400)return;
@@ -100,20 +83,13 @@ public final class MainActivity extends Activity {
                 JSONObject q=new JSONObject(raw);String id=q.getString("id");if(q.getInt("v")!=1||!id.matches("[0-9a-f-]{36}"))return;
                 JSONObject response=new JSONObject().put("v",1).put("id",id).put("glasses_version",BuildConfig.VERSION_NAME)
                     .put("glasses_code",BuildConfig.VERSION_CODE).put("phone_version",menu.phoneVersion).put("mode",menu.mode.key)
-                    .put("state_synced",menu.synced).put("header",renderedHeader);
+                    .put("state_synced",menu.synced).put("header",renderedHeader).put("camera_source","rokid_cxr_takePhoto");
                 Caps caps=new Caps();caps.write(response.toString());bridge.sendMessage("chess_probe_result",caps);
             }catch(Exception ignored){}});
         });
     }
     @Override protected void onResume(){
-        super.onResume();active=true;menu.synced=false;menu.pendingId="";menu.back();main.post(tick);cameraHandler.post(watchdog);main.postDelayed(this::queryState,700);
-        if(checkSelfPermission(Manifest.permission.CAMERA)==PackageManager.PERMISSION_GRANTED)cameraHandler.post(()->{if(streaming)openCamera();});
-        else requestPermissions(new String[]{Manifest.permission.CAMERA},19);
-    }
-    @Override public void onRequestPermissionsResult(int request,String[] permissions,int[] results){
-        super.onRequestPermissionsResult(request,permissions,results);
-        if(request==19&&results.length>0&&results[0]==PackageManager.PERMISSION_GRANTED)cameraHandler.post(()->{if(streaming)openCamera();});
-        else {hud="카메라 권한이 필요합니다.\n안경 앱 설정에서 허용하세요.";expires=0;render();}
+        super.onResume();active=true;menu.synced=false;menu.pendingId="";menu.back();main.post(tick);main.postDelayed(this::queryState,700);
     }
     private final Runnable tick=new Runnable(){public void run(){
         if(!active)return;
@@ -164,85 +140,6 @@ public final class MainActivity extends Activity {
         if(code==KeyEvent.KEYCODE_BACK&&menu.screen!=GlassMenu.Screen.GUIDE){back();return true;}
         return super.onKeyDown(code,event);
     }
-    private final Runnable watchdog=new Runnable(){public void run(){
-        if(!active)return;
-        if(streaming&&SystemClock.elapsedRealtime()-lastRequestElapsed>6000){streaming=false;closeCamera();}
-        cameraHandler.postDelayed(this,1000);
-    }};
-    private void openCamera(){
-        if(!active||!streaming||camera!=null||opening)return;opening=true;int epoch=++cameraEpoch;
-        try{
-            CameraManager manager=(CameraManager)getSystemService(CAMERA_SERVICE);String[] ids=manager.getCameraIdList();
-            if(ids.length==0)throw new IllegalStateException("카메라 없음");String chosen=ids[0];
-            for(String id:ids)if(Integer.valueOf(CameraCharacteristics.LENS_FACING_BACK).equals(manager.getCameraCharacteristics(id).get(CameraCharacteristics.LENS_FACING))){chosen=id;break;}
-            CameraCharacteristics info=manager.getCameraCharacteristics(chosen);int[] modes=info.get(CameraCharacteristics.CONTROL_AF_AVAILABLE_MODES);
-            if(modes!=null)for(int mode:modes)if(mode==CaptureRequest.CONTROL_AF_MODE_CONTINUOUS_PICTURE)autofocus=mode;
-            StreamConfigurationMap map=info.get(CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP);
-            Size[] sizes=map==null?null:map.getOutputSizes(ImageFormat.YUV_420_888);
-            if(sizes==null||sizes.length==0)throw new IllegalStateException("YUV 영상 미지원");
-            Size size=Arrays.stream(sizes).filter(s->s.getWidth()<=1280&&s.getHeight()<=960)
-                .min(Comparator.comparingLong(s->Math.abs((long)s.getWidth()*s.getHeight()-960L*720)))
-                .orElseGet(()->Arrays.stream(sizes).min(Comparator.comparingLong(s->(long)s.getWidth()*s.getHeight())).orElse(sizes[0]));
-            if((long)size.getWidth()*size.getHeight()>2_000_000)throw new IllegalStateException("호환 영상 크기 없음");
-            reader=ImageReader.newInstance(size.getWidth(),size.getHeight(),ImageFormat.YUV_420_888,3);
-            reader.setOnImageAvailableListener(this::image,cameraHandler);
-            if(checkSelfPermission(Manifest.permission.CAMERA)!=PackageManager.PERMISSION_GRANTED){opening=false;return;}
-            manager.openCamera(chosen,new CameraDevice.StateCallback(){
-                public void onOpened(CameraDevice device){
-                    if(!active||epoch!=cameraEpoch){device.close();return;}camera=device;opening=false;
-                    try{camera.createCaptureSession(Collections.singletonList(reader.getSurface()),new CameraCaptureSession.StateCallback(){
-                        public void onConfigured(CameraCaptureSession ready){
-                            if(!active||epoch!=cameraEpoch){ready.close();return;}session=ready;
-                            try{
-                                CaptureRequest.Builder preview=camera.createCaptureRequest(CameraDevice.TEMPLATE_PREVIEW);
-                                preview.addTarget(reader.getSurface());preview.set(CaptureRequest.CONTROL_AF_MODE,autofocus);
-                                ready.setRepeatingRequest(preview.build(),null,cameraHandler);sendStatus("라이브 카메라 준비됨");
-                            }catch(Exception e){sendStatus("영상 스트림 시작 실패");closeCamera();}
-                        }
-                        public void onConfigureFailed(CameraCaptureSession failed){if(epoch==cameraEpoch){sendStatus("카메라 세션 실패");closeCamera();}else failed.close();}
-                    },cameraHandler);}catch(Exception e){sendStatus("카메라 세션 오류");closeCamera();}
-                }
-                public void onDisconnected(CameraDevice device){device.close();if(epoch==cameraEpoch){closeCamera();sendStatus("카메라 연결 끊김");}}
-                public void onError(CameraDevice device,int error){device.close();if(epoch==cameraEpoch){closeCamera();sendStatus("카메라 오류 "+error);}}
-            },cameraHandler);
-        }catch(Exception e){opening=false;sendStatus("카메라를 열지 못했습니다. 권한/다른 앱을 확인하세요.");}
-    }
-    private void capture(String id){
-        if(!active)return;
-        if(!pending.isEmpty()){replyError(id,"이전 프레임 처리 중");return;}
-        pending=id;minimumTimestamp=lastImageTimestamp;streaming=true;lastRequestElapsed=SystemClock.elapsedRealtime();openCamera();
-        cameraHandler.postDelayed(()->{if(pending.equals(id)){pending="";replyError(id,"카메라 응답 시간 초과");closeCamera();if(streaming)openCamera();}},3000);
-    }
-    private void image(ImageReader source){
-        if(source!=reader)return;
-        try(Image image=source.acquireLatestImage()){
-            if(image==null)return;lastImageTimestamp=image.getTimestamp();
-            if(pending.isEmpty()||lastImageTimestamp<=minimumTimestamp)return;
-            String id=pending;pending="";byte[] jpeg=jpeg(image);
-            if(jpeg.length>300000){replyError(id,"프레임이 너무 큽니다.");return;}
-            int count=(jpeg.length+11999)/12000;
-            for(int index=0;index<count;index++){
-                int offset=index*12000,length=Math.min(12000,jpeg.length-offset);
-                Caps caps=new Caps();caps.write(id);caps.writeInt32(index);caps.writeInt32(count);caps.writeInt32(jpeg.length);caps.write(jpeg,offset,length);
-                if(bridge.sendMessage("chess_frame_chunk",caps)<0){replyError(id,"영상 전송 혼잡 · 다음 프레임 대기");break;}
-            }
-        }catch(Exception e){String id=pending;pending="";if(!id.isEmpty())replyError(id,"프레임 전송 오류");}
-    }
-    private byte[] jpeg(Image image){
-        int width=image.getWidth(),height=image.getHeight();Image.Plane[] planes=image.getPlanes();
-        byte[] nv21=YuvFrame.nv21(width,height,new ByteBuffer[]{planes[0].getBuffer(),planes[1].getBuffer(),planes[2].getBuffer()},
-            new int[]{planes[0].getRowStride(),planes[1].getRowStride(),planes[2].getRowStride()},
-            new int[]{planes[0].getPixelStride(),planes[1].getPixelStride(),planes[2].getPixelStride()});
-        ByteArrayOutputStream output=new ByteArrayOutputStream();
-        if(!new YuvImage(nv21,ImageFormat.NV21,width,height,null).compressToJpeg(new Rect(0,0,width,height),60,output))throw new IllegalStateException("JPEG 인코딩 실패");
-        return output.toByteArray();
-    }
-    private void replyError(String id,String message){Caps caps=new Caps();caps.write(id);caps.write(message);bridge.sendMessage("chess_frame_error",caps);}
-    private void sendStatus(String message){Caps caps=new Caps();caps.write(message);bridge.sendMessage("chess_camera_status",caps);}
-    private void closeCamera(){
-        cameraEpoch++;opening=false;pending="";lastImageTimestamp=minimumTimestamp=0;
-        if(session!=null){session.close();session=null;}if(camera!=null){camera.close();camera=null;}if(reader!=null){reader.close();reader=null;}
-    }
-    @Override protected void onPause(){active=false;main.removeCallbacksAndMessages(null);cameraHandler.removeCallbacks(watchdog);cameraHandler.post(this::closeCamera);super.onPause();}
-    @Override protected void onDestroy(){unregisterReceiver(keys);cameraHandler.post(()->{closeCamera();cameraThread.quitSafely();});super.onDestroy();}
+    @Override protected void onPause(){active=false;main.removeCallbacksAndMessages(null);super.onPause();}
+    @Override protected void onDestroy(){unregisterReceiver(keys);super.onDestroy();}
 }

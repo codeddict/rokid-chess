@@ -18,6 +18,7 @@ public final class MainActivity extends Activity implements ChessService.Listene
     private BoardView board;private CameraView camera;private TextView status,advice,turn,metrics;private EditText input;
     private LinearLayout correction;
     private SelfUpdater updater;private TextView updateStatus,diagnosticStatus;
+    private AlertDialog calibrationDialog;
     private Button live;private String selected="";private boolean bound,installRequested,visible;
     private final ServiceConnection connection=new ServiceConnection(){
         public void onServiceConnected(ComponentName name,IBinder binder){service=((ChessService.LocalBinder)binder).service();if(visible)service.attach(MainActivity.this);}
@@ -56,7 +57,8 @@ public final class MainActivity extends Activity implements ChessService.Listene
         button(modes,"내 말 색 변경",()->use(()->service.changePlayer()));
         LinearLayout setup=row(content);
         button(setup,"안경 연결",()->authenticate(false));button(setup,"안경 앱 설치",()->authenticate(true));
-        button(content,"실제 체스판 촬영 · 위치 맞추기",()->use(()->service.requestCalibration()));
+        label(content,"촬영 카메라: 로키드 안경 · 휴대폰으로 사진을 받아 판 위치를 맞춥니다.",13);
+        button(content,"로키드 카메라 촬영 · 위치 맞추기",()->use(()->service.requestCalibration()));
         live=button(content,"실물 판 안내 시작",()->use(()->service.setLive(state==null||!state.live)));
         label(content,"처음에는 실물 말을 기본 시작 위치에 놓고 판을 맞춥니다. 안내에 따라 실제 말을 옮기세요. 아드님이 둔 수도 안경이 관측합니다.",14);
         button(content,"인식 보정 열기 / 닫기",()->correction.setVisibility(correction.getVisibility()==View.VISIBLE?View.GONE:View.VISIBLE));
@@ -99,7 +101,7 @@ public final class MainActivity extends Activity implements ChessService.Listene
         installRequested=install;
         try{
             if(!AuthorizationHelper.INSTANCE.isRequiredHiRokidInstalled(this)){status.setText("Hi Rokid를 설치하고 안경을 연결하세요.");return;}
-            Pair<Integer,Intent> cached=AuthorizationHelper.INSTANCE.requestAuthorization(this,new GlassPermission[]{GlassPermission.DEVICE_MANAGE},7001);
+            Pair<Integer,Intent> cached=AuthorizationHelper.INSTANCE.requestAuthorization(this,new GlassPermission[]{GlassPermission.DEVICE_MANAGE,GlassPermission.CAMERA},7001);
             if(cached!=null)auth(cached.first,cached.second);
         }catch(Exception e){status.setText("Hi Rokid 인증 요청 실패");}
     }
@@ -144,6 +146,7 @@ public final class MainActivity extends Activity implements ChessService.Listene
     }
     @Override public void calibration(byte[] jpeg){
         if(isFinishing()||isDestroyed()||service==null)return;
+        if(calibrationDialog!=null&&calibrationDialog.isShowing())return;
         final AlertDialog[] dialog={null};final CalibrationView[] view={null};
         String color=state==null?"white":state.player;
         view[0]=new CalibrationView(this,jpeg,()->{if(dialog[0]!=null){dialog[0].setTitle(CalibrationSteps.title(color,view[0].selectedCount()));dialog[0].getButton(AlertDialog.BUTTON_POSITIVE).setEnabled(view[0].complete());}});
@@ -152,7 +155,8 @@ public final class MainActivity extends Activity implements ChessService.Listene
             .setView(view[0]).setNegativeButton("취소",(d,w)->use(()->service.discardCalibration()))
             .setNeutralButton("선택 초기화",null).setPositiveButton("이 실제 판으로 맞추기",(d,w)->use(()->service.calibrate(view[0].corners()))).create();
         dialog[0].setOnShowListener(d->{dialog[0].getButton(AlertDialog.BUTTON_POSITIVE).setEnabled(false);dialog[0].getButton(AlertDialog.BUTTON_NEUTRAL).setOnClickListener(v->view[0].reset());});
-        dialog[0].setOnCancelListener(d->use(()->service.discardCalibration()));dialog[0].show();
+        dialog[0].setOnCancelListener(d->use(()->service.discardCalibration()));calibrationDialog=dialog[0];
+        dialog[0].setOnDismissListener(d->calibrationDialog=null);dialog[0].show();
     }
     @Override public void camera(byte[] jpeg,float[] corners,String move){if(visible&&!isDestroyed())camera.frame(jpeg,corners,move);}
     @Override public void diagnostics(String report){diagnosticStatus.setText(report);}
